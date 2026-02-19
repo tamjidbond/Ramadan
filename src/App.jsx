@@ -1360,7 +1360,6 @@ export default function RamadanUltra() {
         }
 
         body {
-          font-family: 'Hind Siliguri', sans-serif;
           background: var(--bg);
           color: var(--text);
           line-height: 1.6;
