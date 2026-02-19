@@ -2500,7 +2500,7 @@ export default function RamadanUltra() {
                 <input
                   type="text"
                   className="search-input"
-                  placeholder="শহর লিখুন... (ঢাকা, চট্টগ্রাম)"
+                  placeholder="বাংলায় শহর লিখুন  ( খুলনা,ঢাকা, চট্টগ্রাম. . . ইত্যাদি )"
                   value={city}
                   onChange={handleCityChange}
                   onKeyDown={(e) => e.key === "Enter" && fetchTimings()}
@@ -2544,7 +2544,7 @@ export default function RamadanUltra() {
                 ) : (
                   <Zap size={18} />
                 )}
-                {loading ? "আপডেট করা হচ্ছে..." : "আপডেট করুন"}
+                {loading ? "খোঁজ করা হচ্ছে..." : "খুঁজুন"}
               </button>
             </div>
 
