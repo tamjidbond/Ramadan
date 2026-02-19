@@ -3075,11 +3075,7 @@ export default function RamadanUltra() {
                   <span key="info-api">
                     <a href="https://tamjidbond.netlify.app/" target="_blank">Tamjid Bond</a>
                   </span>
-                  <span key="info-sep1">·</span>
-                  <span key="info-method">
-                    {METHODS.find((m) => m.id === method)?.name}
-                  </span>
-                  <span key="info-sep2">·</span>
+                   <span key="info-sep3">·</span>
                   <span key="info-school">
                     {SCHOOLS.find((s) => s.id === school)?.name}
                   </span>
