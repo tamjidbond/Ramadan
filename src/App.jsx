@@ -129,6 +129,7 @@ const ADDITIONAL_PRAYERS = [
   },
 ];
 
+// এই লিস্টটি এখন শুধুমাত্র অভ্যন্তরীণ ফ্যালব্যাক ও কোঅর্ডিনেটের জন্য ব্যবহৃত হয় (UI তে দেখানো হয় না)
 const POPULAR_CITIES = [
   {
     bn: "ঢাকা",
@@ -634,6 +635,7 @@ export default function RamadanUltra() {
   const audioRef = useRef(null);
   const refreshInterval = useRef(null);
   const notificationCounter = useRef(0);
+  const searchTimeout = useRef(null); // for debounce
 
   // নেটওয়ার্ক স্ট্যাটাস ট্র্যাক
   useEffect(() => {
@@ -896,29 +898,57 @@ export default function RamadanUltra() {
     return { iftar: iftarDiff, sehar: seharDiff };
   }, [timings, currentTime]);
 
-  // সিটি সাজেশন
-  const fetchSuggestions = (query) => {
+  // সিটি সাজেশন – ডায়নামিক (Nominatim API)
+  const fetchSuggestions = async (query) => {
     if (query.length < 2) {
       setSuggestions([]);
       return;
     }
 
-    const bnQuery = query;
-    const enQuery = fromBengaliNumber(query).toLowerCase();
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?` +
+        `q=${encodeURIComponent(query)}&` +
+        `format=json&` +
+        `addressdetails=1&` +
+        `limit=10&` +
+        `countrycodes=BD&` +
+        `accept-language=bn`, // বাংলা ভাষায় নাম চাই
+        {
+          headers: {
+            'User-Agent': 'RamadanUltra/1.0' // Nominatim-এর জন্য প্রয়োজনীয়
+          }
+        }
+      );
+      const data = await response.json();
 
-    const filtered = POPULAR_CITIES.filter(
-      (city) =>
-        city.bn.includes(bnQuery) || city.en.toLowerCase().includes(enQuery),
-    ).map((city) => ({
-      bn: city.bn,
-      en: city.en,
-      country: "বাংলাদেশ",
-      lat: city.lat,
-      lon: city.lon,
-      population: city.population,
-    }));
+      const mapped = data.map(item => ({
+        bn: item.display_name.split(',')[0], // সাধারণ নাম (প্রথম অংশ)
+        en: item.name,                         // ইংরেজি নাম (যদি থাকে)
+        country: "বাংলাদেশ",
+        lat: parseFloat(item.lat),
+        lon: parseFloat(item.lon),
+        population: null
+      }));
 
-    setSuggestions(filtered);
+      setSuggestions(mapped);
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      // API ব্যর্থ হলে স্ট্যাটিক লিস্ট থেকে ফিল্টার করি (ফলব্যাক)
+      const bnQuery = query;
+      const enQuery = fromBengaliNumber(query).toLowerCase();
+      const filtered = POPULAR_CITIES.filter(
+        city => city.bn.includes(bnQuery) || city.en.toLowerCase().includes(enQuery)
+      ).map(city => ({
+        bn: city.bn,
+        en: city.en,
+        country: "বাংলাদেশ",
+        lat: city.lat,
+        lon: city.lon,
+        population: city.population
+      }));
+      setSuggestions(filtered);
+    }
   };
 
   // টাইমিংস ফেচ
@@ -961,7 +991,6 @@ export default function RamadanUltra() {
     while (retryCount < maxRetries && !success) {
       try {
         const date = new Date();
-        // Use today's date in API call
         const url = `https://api.aladhan.com/v1/timingsByCity/${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()}?city=${encodeURIComponent(finalCityEn)}&country=Bangladesh&method=${method}&school=${school}`;
 
         console.log("Fetching from URL:", url);
@@ -978,7 +1007,6 @@ export default function RamadanUltra() {
           throw new Error("Invalid API response structure");
         }
 
-        // Debug: log the full API response
         console.log("API Response:", data);
 
         const timingsData = data.data.timings;
@@ -1019,11 +1047,9 @@ export default function RamadanUltra() {
           const hijriDay = parseInt(hijri.day);
           const hijriMonth = parseInt(hijri.month.number);
 
-          // Bangladesh is UTC+6, API might be using UTC
           const currentHour = date.getHours();
           const bangladeshHour = (currentHour + 6) % 24;
 
-          // If it's after Maghrib (around 6 PM), the next Hijri day has started in Islamic calendar
           const maghribTime = timingsData.Maghrib;
           let adjustedHijriDay = hijriDay;
 
@@ -1035,7 +1061,6 @@ export default function RamadanUltra() {
               date.getHours() * 60 + date.getMinutes();
             const maghribTotalMinutes = maghribHour * 60 + maghribMinute;
 
-            // If current time is after Maghrib, it's next Hijri day
             if (currentTotalMinutes >= maghribTotalMinutes) {
               adjustedHijriDay = hijriDay + 1;
               console.log(
@@ -1045,7 +1070,6 @@ export default function RamadanUltra() {
             }
           }
 
-          // Apply manual adjustment if needed
           const finalHijriDay = Math.max(1, adjustedHijriDay + hijriAdjustment);
 
           console.log("Hijri data:", {
@@ -1076,9 +1100,7 @@ export default function RamadanUltra() {
             monthNumber: hijriMonth,
           });
 
-          // Set roza count
           if (hijriMonth === 9) {
-            // Ramadan
             setRozaCount(finalHijriDay);
           } else {
             setRozaCount(0);
@@ -1325,6 +1347,18 @@ export default function RamadanUltra() {
     const ampm = parsed.hours >= 12 ? "PM" : "AM";
     const hour12 = parsed.hours % 12 || 12;
     return `${toBengaliNumber(hour12)}:${toBengaliNumber(parsed.minutes.toString().padStart(2, "0"))} ${ampm}`;
+  };
+
+  // ইনপুট পরিবর্তন হ্যান্ডলার (ডিবাউন্স সহ)
+  const handleCityChange = (e) => {
+    const value = e.target.value;
+    setCity(value);
+    if (searchTimeout.current) {
+      clearTimeout(searchTimeout.current);
+    }
+    searchTimeout.current = setTimeout(() => {
+      fetchSuggestions(value);
+    }, 300);
   };
 
   const countdowns = getCountdowns();
@@ -1816,39 +1850,6 @@ export default function RamadanUltra() {
           border-radius: 12px;
           margin-bottom: 16px;
           color: var(--error);
-        }
-
-        .popular-label {
-          font-size: 14px;
-          color: var(--gold-dim);
-          margin-bottom: 12px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .popular-chips {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
-
-        .chip {
-          padding: 8px 20px;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid var(--border);
-          border-radius: 100px;
-          font-size: 16px;
-          color: var(--text-muted);
-          cursor: pointer;
-          transition: all 0.2s;
-          font-family: 'Hind Siliguri', sans-serif;
-        }
-
-        .chip:hover {
-          color: var(--text);
-          border-color: var(--gold);
-          background: rgba(201,168,76,0.1);
         }
 
         .next-banner {
@@ -2454,6 +2455,7 @@ export default function RamadanUltra() {
                 {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
               </button>
             </Tooltip>
+            {/* ২৪/১২ ঘন্টা বাটন (ইচ্ছা করলে আনকমেন্ট করতে পারেন) */}
             {/* <Tooltip text={unit === "12h" ? "১২ ঘন্টা" : "২৪ ঘন্টা"}>
               <button className="icon-btn" onClick={() => setUnit(u => u === "12h" ? "24h" : "12h")}>
                 {unit === "12h" ? "১২ঘ" : "২৪ঘ"}
@@ -2473,6 +2475,11 @@ export default function RamadanUltra() {
               <GoldText>রমাদ্বান কারীম</GoldText>
             </h1>
             <div className="hero-date">
+              {hijriDate ? (
+                <>
+                  {toBengaliNumber(hijriDate.day)} {hijriDate.monthAr} {toBengaliNumber(hijriDate.year)}, 
+                </>
+              ) : null}
               {WEEKDAYS[currentTime.getDay()]}, {formatBengaliDate(currentTime)}
             </div>
             <div className="hero-time font-bold">
@@ -2495,10 +2502,7 @@ export default function RamadanUltra() {
                   className="search-input"
                   placeholder="শহর লিখুন... (ঢাকা, চট্টগ্রাম)"
                   value={city}
-                  onChange={(e) => {
-                    setCity(e.target.value);
-                    fetchSuggestions(e.target.value);
-                  }}
+                  onChange={handleCityChange}
                   onKeyDown={(e) => e.key === "Enter" && fetchTimings()}
                 />
                 {suggestions.length > 0 && (
@@ -2540,7 +2544,7 @@ export default function RamadanUltra() {
                 ) : (
                   <Zap size={18} />
                 )}
-                {loading ? "খোঁজা হচ্ছে..." : "খুঁজুন"}
+                {loading ? "আপডেট করা হচ্ছে..." : "আপডেট করুন"}
               </button>
             </div>
 
@@ -2551,24 +2555,7 @@ export default function RamadanUltra() {
               </div>
             )}
 
-            <div className="popular-label">
-              <Star size={14} /> জনপ্রিয় শহর
-            </div>
-            <div className="popular-chips">
-              {POPULAR_CITIES.map((c) => (
-                <button
-                  key={`chip-${c.bn}`}
-                  className="chip"
-                  onClick={() => {
-                    setCity(c.bn);
-                    setCityEn(c.en);
-                    fetchTimings(c.bn, c.en);
-                  }}
-                >
-                  {c.bn}
-                </button>
-              ))}
-            </div>
+            {/* স্ট্যাটিক পপুলার সিটি চিপস সরিয়ে দেওয়া হয়েছে */}
 
             {lastUpdated && (
               <div
@@ -3068,8 +3055,8 @@ export default function RamadanUltra() {
               <div>
                 <div className="info-title">রমাদ্বান টাইমস</div>
                 <div className="info-body">
-                  নামাজের সময় Astronomy অ্যালগরিদম ব্যবহার করে গণনা করা হয়।
-                  নির্ভুল সময়ের জন্য স্থানীয় মসজিদের সাথে যাচাই করুন।
+                  নামাজের সময় Astronomy অ্যালগরিদম ব্যবহার করে গণনা করা হয়। এখানে নামাজের ওয়াক্ত শুরুর সময় উল্লেখিত আছে। 
+                  নির্ভুল জামা'আত শুরুর সময়ের জন্য স্থানীয় মসজিদের সাথে যাচাই করুন।
                 </div>
                 <div className="info-meta">
                   <span key="" className="text-yellow-500 ">
