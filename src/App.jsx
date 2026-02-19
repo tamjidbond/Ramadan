@@ -3072,7 +3072,7 @@ export default function RamadanUltra() {
                   নির্ভুল সময়ের জন্য স্থানীয় মসজিদের সাথে যাচাই করুন।
                 </div>
                 <div className="info-meta">
-                  <span key="info-api">
+                  <span key="" className="text-yellow-500 ">
                     <a href="https://tamjidbond.netlify.app/" target="_blank">Tamjid Bond</a>
                   </span>
                    <span key="info-sep3">·</span>
