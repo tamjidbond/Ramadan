@@ -1792,6 +1792,7 @@ export default function RamadanUltra() {
           color: white;
           cursor: pointer;
           display: flex;
+          justify-content: center;
           align-items: center;
           gap: 8px;
           white-space: nowrap;
@@ -2500,7 +2501,7 @@ export default function RamadanUltra() {
                 <input
                   type="text"
                   className="search-input"
-                  placeholder="বাংলায় শহর লিখুন  ( খুলনা,ঢাকা, চট্টগ্রাম. . . ইত্যাদি )"
+                  placeholder="বাংলায় শহর লিখুন  ( খুলনা, ঢাকা, চট্টগ্রাম. . . ইত্যাদি )"
                   value={city}
                   onChange={handleCityChange}
                   onKeyDown={(e) => e.key === "Enter" && fetchTimings()}
@@ -2535,7 +2536,7 @@ export default function RamadanUltra() {
                 )}
               </div>
               <button
-                className="search-btn"
+                className="search-btn "
                 onClick={() => fetchTimings()}
                 disabled={loading}
               >
